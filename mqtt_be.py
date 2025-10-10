@@ -4,8 +4,6 @@ import json
 from paho.mqtt import client as mqtt
 
 app = FastAPI()
-
-# Cho phép React truy cập
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,25 +18,42 @@ latest_data = {"message": "No data yet"}
 def get_latest():
     return latest_data
 
-
-# ===== MQTT setup =====
+# ===== MQTT config =====
 BROKER = "broker.hivemq.com"
 PORT = 1883
 TOPIC = "fire-system/data"
+CLIENT_ID = "python-fire-monitor-001"
+
+mqtt_client = None
+
+def on_connect(client, userdata, flags, rc, properties=None):
+    print(f"✅ MQTT connected rc={rc}")
+    client.subscribe(TOPIC)
+    print(f"📡 Subscribed: {TOPIC}")
 
 def on_message(client, userdata, msg):
     global latest_data
-    payload = msg.payload.decode()
     try:
-        latest_data = json.loads(payload)
-        print("📩 Nhận MQTT:", latest_data)
-    except:
-        print("❌ Lỗi parse dữ liệu")
+        payload = msg.payload.decode("utf-8", errors="ignore")
+        data = json.loads(payload)
+        latest_data = data
+        print("📩 Nhận MQTT:", data)
+    except Exception as e:
+        print("❌ Lỗi parse:", e, "raw=", msg.payload)
 
-mqtt_client = mqtt.Client()
-mqtt_client.on_message = on_message
-mqtt_client.connect(BROKER, PORT)
-mqtt_client.subscribe(TOPIC)
-mqtt_client.loop_start()
+@app.on_event("startup")
+def start_mqtt():
+    global mqtt_client
+    mqtt_client = mqtt.Client(client_id=CLIENT_ID, protocol=mqtt.MQTTv311)
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_message = on_message
+    mqtt_client.connect(BROKER, PORT, keepalive=60)
+    mqtt_client.loop_start()
+    print("▶️ MQTT loop started")
 
-# uvicorn mqtt_be:app --reload
+@app.on_event("shutdown")
+def stop_mqtt():
+    if mqtt_client:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+        print("⏹ MQTT stopped")
