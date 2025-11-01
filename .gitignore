@@ -1,0 +1,22 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ---- Virtual Environment ----
+venv/
+ENV/
+env/
+
+# ---- IDE ----
+.vscode/
+.idea/
+
+# ---- Logs & cache ----
+*.log
+*.tmp
+*.bak
+
+# ---- Environment secrets ----
+.env
