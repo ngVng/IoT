@@ -22,8 +22,12 @@ pip freeze > requirements.txt
 # Chạy dự án
 - BE
     uvicorn mqtt_be:app --reload
+
+    py -m uvicorn mqtt_be:app --reload
 - FE
     npm run dev
+
+    http://10.0.2.2:8000/mobile
 
 # wokwi mô phỏng thiết bị cảm biến
     https://wokwi.com/projects/444443677875518465

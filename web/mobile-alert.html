@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cảnh Báo Cháy - Mobile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: white;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .status-safe {
+            background: #10b981;
+        }
+        
+        .status-danger {
+            background: #ef4444;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .alert-card {
+            background: #ef4444;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            animation: shake 0.5s infinite;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .alert-card h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .floor-info {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        
+        .floor-info h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+        
+        .sensor-data {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        
+        .sensor-item {
+            text-align: center;
+        }
+        
+        .sensor-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fbbf24;
+        }
+        
+        .sensor-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        
+        .btn-enable {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-disable {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .notification-status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔥 Cảnh Báo Cháy IoT</h1>
+            <div class="status-badge" id="systemStatus">
+                🟢 SYSTEM OK
+            </div>
+        </div>
+        
+        <div class="notification-status" id="notifStatus">
+            Chưa bật thông báo
+        </div>
+        
+        <button class="btn btn-enable" id="enableNotif">
+            🔔 BẬT THÔNG BÁO
+        </button>
+        
+        <div id="alertContainer"></div>
+        
+        <div id="floorContainer"></div>
+    </div>
+    
+    <script>
+        let ws = null;
+        let notificationEnabled = false;
+        
+        // Request notification permission
+        document.getElementById('enableNotif').addEventListener('click', async () => {
+            if ('Notification' in window) {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    notificationEnabled = true;
+                    document.getElementById('notifStatus').textContent = '✅ Thông báo đã bật';
+                    document.getElementById('notifStatus').style.background = '#10b981';
+                    document.getElementById('enableNotif').textContent = '🔕 TẮT THÔNG BÁO';
+                    document.getElementById('enableNotif').className = 'btn btn-disable';
+                    
+                    new Notification('Thông báo cháy đã bật!', {
+                        body: 'Bạn sẽ nhận được cảnh báo khi phát hiện cháy',
+                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" font-size="50">🔥</text></svg>',
+                        vibrate: [200, 100, 200]
+                    });
+                } else {
+                    alert('Vui lòng cho phép thông báo trong cài đặt trình duyệt');
+                }
+            } else {
+                alert('Trình duyệt không hỗ trợ thông báo');
+            }
+        });
+        
+        // Connect to WebSocket
+        function connectWebSocket() {
+            // Use 10.0.2.2 for Android Emulator (host machine IP)
+            // Or change to your actual IP address if on real device
+            const wsUrl = 'ws://10.0.2.2:8000/ws/sensors';
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('✅ Connected to server');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                updateUI(data);
+                
+                // Send notification if danger (always, no permission needed)
+                if (data.dangerFloors && data.dangerFloors.length > 0) {
+                    sendNotification(data.dangerFloors);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                console.log('Disconnected, reconnecting...');
+                setTimeout(connectWebSocket, 2000);
+            };
+        }
+        
+        let lastAlertTime = 0;
+        
+        function sendNotification(dangerFloors) {
+            const now = Date.now();
+            // Anti-spam: only alert every 10 seconds
+            if (now - lastAlertTime < 10000) return;
+            lastAlertTime = now;
+            
+            const floorText = dangerFloors.join(', ');
+            
+            // Try Web Notification first (if granted)
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('🚨 CẢNH BÁO CHÁY!', {
+                    body: `Phát hiện cháy tại tầng ${floorText}!\nYêu cầu sơ tán ngay!`,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" font-size="50">🔥</text></svg>',
+                    vibrate: [500, 200, 500, 200, 500],
+                    requireInteraction: true,
+                    tag: 'fire-alert'
+                });
+            }
+            
+            // Always show full-screen alert (works without permission)
+            if (confirm(`🚨🔥 CẢNH BÁO CHÁY! 🔥🚨\n\nPhát hiện cháy tại tầng: ${floorText}\n\nYêu cầu sơ tán ngay lập tức!\n\nNhấn OK để xác nhận`)) {
+                console.log('Fire alert acknowledged');
+            }
+            
+            // Vibrate phone
+            if ('vibrate' in navigator) {
+                navigator.vibrate([500, 200, 500, 200, 500]);
+            }
+            
+            // Play sound
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGS67OeaTRAMT6fj8LdjHAU5kdj2yXksBSRz0fLajzsIEV+46+qkVRkPSLbfyrleIQQugM/z2Io3CBhku+znmk0QDE+n4/C3YxwFOZHY8slhKwUkcdDy2YY7Bw9dsOvqo1YaD0i12sKxXyEFLoDP89iLNwcYY7vr6JpNEAxPp+PxtmQcBjiP1/LMeCwFI3DN8dmGOggPXrzs6qJXGg9HtNnCr2AhBS2Az/bYjDYIGGK86+mdTRALS6rh6rZSHAU4j9f0yHkpByRw1PbaizsJC160veC2YxEKD0+1vsqjUBwELEjJ2YwoByJYq6iXXi4RDUykpdaoPRURN1imrKdcKRMZVLOnlEwnGQxGn5JqOCoVETRRorNcJRoPQJyQU0EcGAkzVJpuPx8YHi85U4dyNh0WHiyAblM5Ih4aJDhWiHs1HhkhLzVfi3YzIhgfLS82VYV0NiUaIDxef3wwJhQaLUJmfEw7LSIbOExxclgzJBQZKj9icE84KiIaMS1WaTw3KiMaL0VpZkU4KyQdLjxgZ0k6KyMeLzlYYkA4JyIcKjFOWz0xJh0eLkZYWz0yJR4cKzJLUTswJBwcLDhKUDkuJBwaKTVGTzosIxsaKDZFTTorIxkZJzRETTsoIxkYJzJDTDkoIxgYJjFCSDkoIhgXJS9ASDknIRYXJC8+RjglIRYWIy09RDckIBUVIis7QTYjIBUUISo4PzYiHxQTHyg3PDUhHhQSHSc1OjUgHRMRHCU0OTQfHBMRGiI0OC8gHBMQGSExNi8hGxMPGCEyNCwfGhIPFh8vMS0eGhEOFh4uLyweGhEOFR4sLiseGhEOFB0qLCsdGRANExwpKysdGRANEhsoKSscGQ8NEhooKCobGA8MEhcnJyoaGBAMERYmJykZGQ8LERYlJScYFxALEBQkJCYYFw8LDxMjJCYXFw8KDxIiIyUXFw4KDxIhIiQXFg4KDhIhICQWFg4KDhEgHyMWFQ0JDhEfHyMVFQ0JDhEeHyIVFA0JDhEeHiIVFA0IDREeHiEVFA0IDREeHSEVEw0IDBAeHSAVEw0IDBAeHCAUEwwIDBAeHSAUEwwIDBAeHR8UEgwIDBAeHR8TEgwIDA==');
+                audio.play();
+            } catch (e) {
+                console.log('Audio play failed:', e);
+            }
+        }
+        
+        function updateUI(data) {
+            const isDanger = data.dangerFloors && data.dangerFloors.length > 0;
+            
+            // Update system status
+            const statusBadge = document.getElementById('systemStatus');
+            if (isDanger) {
+                statusBadge.textContent = '🔴 ALARM ON';
+                statusBadge.className = 'status-badge status-danger';
+            } else {
+                statusBadge.textContent = '🟢 SYSTEM OK';
+                statusBadge.className = 'status-badge status-safe';
+            }
+            
+            // Update alert
+            const alertContainer = document.getElementById('alertContainer');
+            if (isDanger) {
+                alertContainer.innerHTML = `
+                    <div class="alert-card">
+                        <h2>⚠️ CẢNH BÁO CHÁY!</h2>
+                        <p>Phát hiện cháy tại tầng: <strong>${data.dangerFloors.join(', ')}</strong></p>
+                        <p style="margin-top: 10px;">Yêu cầu sơ tán ngay lập tức!</p>
+                    </div>
+                `;
+            } else {
+                alertContainer.innerHTML = '';
+            }
+            
+            // Update floors
+            const floorContainer = document.getElementById('floorContainer');
+            floorContainer.innerHTML = '';
+            
+            for (let floor in data.floors) {
+                const floorData = data.floors[floor];
+                const isDangerFloor = floorData.status === 'Danger';
+                
+                floorContainer.innerHTML += `
+                    <div class="floor-info" style="background: ${isDangerFloor ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255, 255, 255, 0.1)'}">
+                        <h3>
+                            🏢 Tầng ${floor} 
+                            <span style="float: right; font-size: 14px;">
+                                ${isDangerFloor ? '🔴 NGUY HIỂM' : '🟢 AN TOÀN'}
+                            </span>
+                        </h3>
+                        <div class="sensor-data">
+                            <div class="sensor-item">
+                                <div class="sensor-value">${floorData.temperature?.toFixed(1)}°C</div>
+                                <div class="sensor-label">Nhiệt độ</div>
+                            </div>
+                            <div class="sensor-item">
+                                <div class="sensor-value">${floorData.gas}</div>
+                                <div class="sensor-label">Khí Gas</div>
+                            </div>
+                            <div class="sensor-item">
+                                <div class="sensor-value">${floorData.threshold}</div>
+                                <div class="sensor-label">Ngưỡng</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Start connection
+        connectWebSocket();
+        
+        // Check notification support
+        if (!('Notification' in window)) {
+            document.getElementById('notifStatus').textContent = '❌ Trình duyệt không hỗ trợ thông báo';
+            document.getElementById('enableNotif').disabled = true;
+        }
+    </script>
+</body>
+</html>
